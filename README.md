@@ -51,11 +51,11 @@ The model leverages three primary relational tables from the `bigquery-public-da
 
 ### 1. Cohort Month
 The calendar month ($YYYY-MM$) of a customer's first successful (non-cancelled, non-returned) order.
-$$\text{Cohort Month} = \text{TIMESTAMP\_TRUNC}(\min(\text{order\_created\_at}), \text{MONTH})$$
+$$\text{Cohort Month} = \text{TIMESTAMP\\_TRUNC}(\min(\text{order\\_created\\_at}), \text{MONTH})$$
 
 ### 2. Month Index ($Month_N$)
 The integer count of calendar months elapsed between the cohort creation month and the transaction month.
-$$Month_N = \text{DATE\_DIFF}(\text{Transaction Month}, \text{Cohort Month}, \text{MONTH})$$
+$$Month_N = \text{DATE\\_DIFF}(\text{Transaction Month}, \text{Cohort Month}, \text{MONTH})$$
 
 ### 3. Retention Rate ($R_N$)
 The percentage of the initial cohort that placed at least one completed order during Month $N$.
