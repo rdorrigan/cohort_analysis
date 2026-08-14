@@ -216,7 +216,7 @@ GROUP BY
 ORDER BY
   s.cohort_month DESC,
   s.cohort_size DESC;
-
+```
 ## 7. Looker Studio Layout & Visual Specification
 
 To visualize this model in Looker Studio, connect BigQuery directly to the finalized SQL view and configure the layout using the following blueprint:
