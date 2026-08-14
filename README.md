@@ -72,3 +72,176 @@ $$LTV_N = \frac{\sum_{i=0}^{N} \text{Gross Revenue}_i}{\text{Total Initial Users
 ---
 
 ## 4. Logical Processing Pipeline
+┌────────────────────────────────┐       ┌────────────────────────────────┐
+│   users + orders CTE           │       │   order_items CTE              │
+│   - First order timestamp      │       │   - Line item sale prices      │
+│   - Cohort Month assignment    │       │   - Order-level transaction date│
+│   - Acquisition Channel        │       │   - Status filtering           │
+└──────────────┬─────────────────┘       └──────────────┬─────────────────┘
+│                                        │
+└───────────────────┬────────────────────┘
+│
+▼
+┌────────────────────────────────┐
+│   Cohort Activity Mapping      │
+│   - Calculate Month_N index    │
+│   - Filter (0 <= Month_N <= 12)│
+└───────────────┬────────────────┘
+│
+▼
+┌────────────────────────────────┐
+│   Monthly Aggregations         │
+│   - Active Users               │
+│   - Order Count & Gross Revenue│
+└───────────────┬────────────────┘
+│
+▼
+┌────────────────────────────────┐
+│   Cumulative Window Aggregation│
+│   - SUM() OVER (PARTITION BY   │
+│     cohort_month, channel)     │
+└───────────────┬────────────────┘
+│
+▼
+┌────────────────────────────────┐
+│   Final Pivot & Metrics View   │
+│   - SAFE_DIVIDE calculations   │
+│   - Retention % & LTV formatting│
+└────────────────────────────────┘
+---
+
+## 5. Production SQL Query
+
+```sql
+WITH user_metadata AS (
+  -- Step 1: Assign cohort month and capture user acquisition channel
+  SELECT
+    u.id AS user_id,
+    u.traffic_source,
+    TIMESTAMP_TRUNC(MIN(o.created_at), MONTH) AS cohort_month
+  FROM
+    `bigquery-public-data.thelook_ecommerce.users` u
+  INNER JOIN
+    `bigquery-public-data.thelook_ecommerce.orders` o
+    ON u.id = o.user_id
+  WHERE
+    o.status NOT IN ('Cancelled', 'Returned')
+  GROUP BY
+    u.id,
+    u.traffic_source
+),
+
+cohort_channel_sizes AS (
+  -- Step 2: Establish Month 0 baseline user volume per channel cohort
+  SELECT
+    cohort_month,
+    traffic_source,
+    COUNT(DISTINCT user_id) AS cohort_size
+  FROM
+    user_metadata
+  GROUP BY
+    1, 2
+),
+
+order_financials AS (
+  -- Step 3: Isolate valid line item revenue
+  SELECT
+    oi.user_id,
+    oi.order_id,
+    TIMESTAMP_TRUNC(oi.created_at, MONTH) AS transaction_month,
+    oi.sale_price
+  FROM
+    `bigquery-public-data.thelook_ecommerce.order_items` oi
+  WHERE
+    oi.status NOT IN ('Cancelled', 'Returned')
+),
+
+cohort_activity AS (
+  -- Step 4: Map order transactions back to cohort origin and calculate month index
+  SELECT
+    m.cohort_month,
+    m.traffic_source,
+    m.user_id,
+    DATE_DIFF(DATE(f.transaction_month), DATE(m.cohort_month), MONTH) AS month_number,
+    f.order_id,
+    f.sale_price
+  FROM
+    user_metadata m
+  INNER JOIN
+    order_financials f
+    ON m.user_id = f.user_id
+  WHERE
+    DATE_DIFF(DATE(f.transaction_month), DATE(f.cohort_month), MONTH) BETWEEN 0 AND 12
+),
+
+monthly_aggregates AS (
+  -- Step 5: Aggregate monthly user activity, orders, and sales
+  SELECT
+    a.cohort_month,
+    a.traffic_source,
+    a.month_number,
+    COUNT(DISTINCT a.user_id) AS active_users,
+    COUNT(DISTINCT a.order_id) AS total_orders,
+    SUM(a.sale_price) AS monthly_revenue
+  FROM
+    cohort_activity a
+  GROUP BY
+    1, 2, 3
+),
+
+cumulative_financials AS (
+  -- Step 6: Compute cumulative revenue across time via partitioned window function
+  SELECT
+    m.cohort_month,
+    m.traffic_source,
+    m.month_number,
+    m.active_users,
+    m.total_orders,
+    m.monthly_revenue,
+    SUM(m.monthly_revenue) OVER (
+      PARTITION BY m.cohort_month, m.traffic_source 
+      ORDER BY m.month_number 
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cumulative_revenue
+  FROM
+    monthly_aggregates m
+)
+
+-- Step 7: Pivot into channel performance overview
+SELECT
+  FORMAT_TIMESTAMP('%Y-%m', s.cohort_month) AS cohort_month,
+  s.traffic_source,
+  s.cohort_size,
+
+  -- Month 0 Baseline Performance
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 0 THEN c.cumulative_revenue END), s.cohort_size), 2) AS m0_ltv,
+
+  -- Month 3 Performance
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 3 THEN c.active_users END), s.cohort_size) * 100, 2) AS m3_retention_pct,
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 3 THEN c.monthly_revenue END), MAX(CASE WHEN c.month_number = 3 THEN c.total_orders END)), 2) AS m3_aov,
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 3 THEN c.cumulative_revenue END), s.cohort_size), 2) AS m3_cumulative_ltv,
+
+  -- Month 6 Performance
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 6 THEN c.active_users END), s.cohort_size) * 100, 2) AS m6_retention_pct,
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 6 THEN c.monthly_revenue END), MAX(CASE WHEN c.month_number = 6 THEN c.total_orders END)), 2) AS m6_aov,
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 6 THEN c.cumulative_revenue END), s.cohort_size), 2) AS m6_cumulative_ltv,
+
+  -- Month 12 Performance
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 12 THEN c.active_users END), s.cohort_size) * 100, 2) AS m12_retention_pct,
+  ROUND(SAFE_DIVIDE(MAX(CASE WHEN c.month_number = 12 THEN c.cumulative_revenue END), s.cohort_size), 2) AS m12_cumulative_ltv
+
+FROM
+  cohort_channel_sizes s
+LEFT JOIN
+  cumulative_financials c
+  ON s.cohort_month = c.cohort_month
+  AND s.traffic_source = c.traffic_source
+WHERE
+  s.cohort_month >= '2023-01-01'
+GROUP BY
+  s.cohort_month,
+  s.traffic_source,
+  s.cohort_size
+ORDER BY
+  s.cohort_month DESC,
+  s.cohort_size DESC;
