@@ -72,42 +72,22 @@ $$LTV_N = \frac{\sum_{i=0}^{N} \text{Gross Revenue}_i}{\text{Total Initial Users
 ---
 
 ## 4. Logical Processing Pipeline
-+--------------------------------+       +--------------------------------+
-|   users + orders CTE           |       |   order_items CTE              |
-|   - First order timestamp      |       |   - Line item sale prices      |
-|   - Cohort Month assignment    |       |   - Order-level transaction date|
-|   - Acquisition Channel        |       |   - Status filtering           |
-+---------------+----------------+       +---------------+----------------+
-                |                                        |
-                +-------------------+--------------------+
-                                    |
-                                    v
-                    +--------------------------------+
-                    |   Cohort Activity Mapping      |
-                    |   - Calculate Month_N index    |
-                    |   - Filter (0 <= Month_N <= 12)|
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +--------------------------------+
-                    |   Monthly Aggregations         |
-                    |   - Active Users               |
-                    |   - Order Count & Gross Revenue|
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +--------------------------------+
-                    |   Cumulative Window Aggregation|
-                    |   - SUM() OVER (PARTITION BY   |
-                    |     cohort_month, channel)     |
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +--------------------------------+
-                    |   Final Pivot & Metrics View   |
-                    |   - SAFE_DIVIDE calculations   |
-                    |   - Retention % & LTV formatting|
-                    +--------------------------------+
+```mermaid
+graph TD
+    %% Inputs
+    A["<b>users + orders CTE</b><br/>• First order timestamp<br/>• Cohort Month assignment<br/>• Acquisition Channel"] 
+    B["<b>order_items CTE</b><br/>• Line item sale prices<br/>• Order-level transaction date<br/>• Status filtering"]
+
+    %% Flow
+    A --> C
+    B --> C
+
+    C["<b>Cohort Activity Mapping</b><br/>• Calculate Month_N index<br/>• Filter (0 <= Month_N <= 12)"] 
+    --> D["<b>Monthly Aggregations</b><br/>• Active Users<br/>• Order Count & Gross Revenue"]
+
+    D --> E["<b>Cumulative Window Aggregation</b><br/>• SUM() OVER (PARTITION BY cohort_month, channel)"]
+
+    E --> F["<b>Final Pivot & Metrics View</b><br/>• SAFE_DIVIDE calculations<br/>• Retention % & LTV formatting"]
 
 ## 5. Production SQL Query
 
