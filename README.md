@@ -72,43 +72,42 @@ $$LTV_N = \frac{\sum_{i=0}^{N} \text{Gross Revenue}_i}{\text{Total Initial Users
 ---
 
 ## 4. Logical Processing Pipeline
-┌────────────────────────────────┐       ┌────────────────────────────────┐
-│   users + orders CTE           │       │   order_items CTE              │
-│   - First order timestamp      │       │   - Line item sale prices      │
-│   - Cohort Month assignment    │       │   - Order-level transaction date│
-│   - Acquisition Channel        │       │   - Status filtering           │
-└──────────────┬─────────────────┘       └──────────────┬─────────────────┘
-│                                        │
-└───────────────────┬────────────────────┘
-│
-▼
-┌────────────────────────────────┐
-│   Cohort Activity Mapping      │
-│   - Calculate Month_N index    │
-│   - Filter (0 <= Month_N <= 12)│
-└───────────────┬────────────────┘
-│
-▼
-┌────────────────────────────────┐
-│   Monthly Aggregations         │
-│   - Active Users               │
-│   - Order Count & Gross Revenue│
-└───────────────┬────────────────┘
-│
-▼
-┌────────────────────────────────┐
-│   Cumulative Window Aggregation│
-│   - SUM() OVER (PARTITION BY   │
-│     cohort_month, channel)     │
-└───────────────┬────────────────┘
-│
-▼
-┌────────────────────────────────┐
-│   Final Pivot & Metrics View   │
-│   - SAFE_DIVIDE calculations   │
-│   - Retention % & LTV formatting│
-└────────────────────────────────┘
----
++--------------------------------+       +--------------------------------+
+|   users + orders CTE           |       |   order_items CTE              |
+|   - First order timestamp      |       |   - Line item sale prices      |
+|   - Cohort Month assignment    |       |   - Order-level transaction date|
+|   - Acquisition Channel        |       |   - Status filtering           |
++---------------+----------------+       +---------------+----------------+
+                |                                        |
+                +-------------------+--------------------+
+                                    |
+                                    v
+                    +--------------------------------+
+                    |   Cohort Activity Mapping      |
+                    |   - Calculate Month_N index    |
+                    |   - Filter (0 <= Month_N <= 12)|
+                    +---------------+----------------+
+                                    |
+                                    v
+                    +--------------------------------+
+                    |   Monthly Aggregations         |
+                    |   - Active Users               |
+                    |   - Order Count & Gross Revenue|
+                    +---------------+----------------+
+                                    |
+                                    v
+                    +--------------------------------+
+                    |   Cumulative Window Aggregation|
+                    |   - SUM() OVER (PARTITION BY   |
+                    |     cohort_month, channel)     |
+                    +---------------+----------------+
+                                    |
+                                    v
+                    +--------------------------------+
+                    |   Final Pivot & Metrics View   |
+                    |   - SAFE_DIVIDE calculations   |
+                    |   - Retention % & LTV formatting|
+                    +--------------------------------+
 
 ## 5. Production SQL Query
 
