@@ -72,22 +72,14 @@ $$LTV_N = \frac{\sum_{i=0}^{N} \text{Gross Revenue}_i}{\text{Total Initial Users
 ---
 
 ## 4. Logical Processing Pipeline
-```mermaid
-graph TD
-    %% Inputs
-    A["<b>users + orders CTE</b><br/>• First order timestamp<br/>• Cohort Month assignment<br/>• Acquisition Channel"] 
-    B["<b>order_items CTE</b><br/>• Line item sale prices<br/>• Order-level transaction date<br/>• Status filtering"]
-
-    %% Flow
-    A --> C
-    B --> C
-
-    C["<b>Cohort Activity Mapping</b><br/>• Calculate Month_N index<br/>• Filter (0 <= Month_N <= 12)"] 
-    --> D["<b>Monthly Aggregations</b><br/>• Active Users<br/>• Order Count & Gross Revenue"]
-
-    D --> E["<b>Cumulative Window Aggregation</b><br/>• SUM() OVER (PARTITION BY cohort_month, channel)"]
-
-    E --> F["<b>Final Pivot & Metrics View</b><br/>• SAFE_DIVIDE calculations<br/>• Retention % & LTV formatting"]
+| Step | Pipeline Stage | Primary Input Data | Logic & Operations |
+| :--- | :--- | :--- | :--- |
+| **1** | **User Metadata** | `users`, `orders` | Join tables, extract minimum `created_at` timestamp per user, assign `cohort_month`, and capture `traffic_source`. |
+| **2** | **Order Financials** | `order_items` | Filter out `Cancelled` and `Returned` items; aggregate line-item `sale_price` to order level. |
+| **3** | **Activity Mapping** | Steps 1 & 2 CTEs | Join financials to user cohort data; calculate `month_number` index using `DATE_DIFF()`. Filter for $0 \le Month_N \le 12$. |
+| **4** | **Monthly Aggregations** | Step 3 CTE | Group by `cohort_month`, `traffic_source`, and `month_number`; compute `COUNT(DISTINCT user_id)`, `COUNT(DISTINCT order_id)`, and `SUM(sale_price)`. |
+| **5** | **Cumulative Window** | Step 4 CTE | Compute running sum of revenue across month indices using `SUM() OVER (PARTITION BY cohort_month, traffic_source ORDER BY month_number)`. |
+| **6** | **Pivot Presentation** | Step 5 CTE | Group by cohort and channel; pivot month indices into columns; compute Retention Rate, AOV, and LTV using `SAFE_DIVIDE()`. |
 
 ## 5. Production SQL Query
 
