@@ -8,11 +8,11 @@ This repository contains the technical specification and SQL model for evaluatin
 
 Understanding customer retention and cumulative revenue growth across acquisition channels is critical for optimizing marketing spend, calculating Customer Acquisition Cost (CAC) payback periods, and forecasting long-term customer value.
 
-This SQL model computes monthly cohort metrics across 0 to 12-month activity windows, tracking:
-* **Cohort Headcount:** Baseline active customer volume per cohort and channel.
-* **Retention Rate (%):** Percentage of initial cohort users making repeat purchases in month $N$.
-* **Average Order Value (AOV):** Revenue generated per completed order in month $N$.
-* **Cumulative LTV ($):** Total cumulative revenue generated per initial cohort user through month $N$.
+This SQL model computes monthly cohort metrics across 0 to 12-month activity windows for 2025 cohorts, tracking:  
+* **Cohort Headcount:** A total baseline volume of 15.7K initial cohort users across 2025.  
+* **Retention Rate (%):** Tracking repeat purchase activity, averaging 4% for 3-Month Retention across cohorts.  
+* **Average Order Value (AOV):** Measuring transaction sizing, with an overall Baseline AOV of $79 alongside trailing 3-Month and 6-Month AOV tracking.  
+* **Cumulative LTV ($):** Evaluating long-term revenue realization per acquired user, reaching a 6-Month Cumulative LTV of $102 and tracking channel performance up to 12-Month Cumulative LTV across Email, Facebook, Search, Organic, and Display channels. 
 
 ---
 
@@ -216,3 +216,22 @@ GROUP BY
 ORDER BY
   s.cohort_month DESC,
   s.cohort_size DESC;
+
+## 7. Looker Studio Layout & Visual Specification
+
+To visualize this model in Looker Studio, connect BigQuery directly to the finalized SQL view and configure the layout using the following blueprint:
+
+### KPI Scorecards
+| Metric Name | Field | Formatting |
+| :--- | :--- | :--- |
+| **Total Cohort Users** | `SUM(cohort_size)` | Number (`124,850`) |
+| **Average M3 Retention** | `AVG(m3_retention_pct)` | Percentage (`12.4%`) |
+| **6-Month Cum. LTV** | `AVG(m6_cumulative_ltv)` | Currency (`$148.50`) |
+| **Baseline AOV** | `AVG(m0_aov)` | Currency (`$62.30`) |
+
+### Dashboard Wireframe
+
+* **Top Filter Bar:** Date Range Picker (`cohort_month`) | Multi-Select Dropdown (`traffic_source`)
+* **Chart 1 (Tree Map):** `cumulative_ltv` segmented by `traffic_source`.
+* **Chart 2 (Line Chart):** `traffic_source` on X-axis, comparing `m3_retention_pct` and `m6_retention_pct`.
+* **Heatmap Table:** `cohort_month` and `traffic_source` rows with conditional color scales applied to retention percentage columns.
